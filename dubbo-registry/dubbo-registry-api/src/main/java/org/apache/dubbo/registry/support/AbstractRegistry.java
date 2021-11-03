@@ -95,11 +95,16 @@ public abstract class AbstractRegistry implements Registry {
 
     public AbstractRegistry(URL url) {
         setUrl(url);
+
         if (url.getParameter(REGISTRY__LOCAL_FILE_CACHE_ENABLED, true)) {
             // Start file save timer
             syncSaveFile = url.getParameter(REGISTRY_FILESAVE_SYNC_KEY, false);
+
+            // 默认保存路径(home/.dubbo/dubbo-registry-appName-address-port.cache)
             String defaultFilename = System.getProperty("user.home") + "/.dubbo/dubbo-registry-" + url.getParameter(APPLICATION_KEY) + "-" + url.getAddress().replaceAll(":", "-") + ".cache";
             String filename = url.getParameter(FILE_KEY, defaultFilename);
+
+            // 创建文件
             File file = null;
             if (ConfigUtils.isNotEmpty(filename)) {
                 file = new File(filename);
@@ -110,6 +115,8 @@ public abstract class AbstractRegistry implements Registry {
                 }
             }
             this.file = file;
+
+            // 加载已有的配置文件
             // When starting the subscription center,
             // we need to read the local cache file for future Registry fault tolerance processing.
             loadProperties();
@@ -169,31 +176,40 @@ public abstract class AbstractRegistry implements Registry {
         if (file == null) {
             return;
         }
+
         // Save
         try {
+            // 使用文件级别锁，来保证同一段时间只会有一个线程进行读取操作
             File lockfile = new File(file.getAbsolutePath() + ".lock");
             if (!lockfile.exists()) {
                 lockfile.createNewFile();
             }
+
             try (RandomAccessFile raf = new RandomAccessFile(lockfile, "rw");
                  FileChannel channel = raf.getChannel()) {
+                // 利用文件锁来保证并发的执行的情况下，只会有一个线程执行成功(原因在于可能是跨 VM的)
                 FileLock lock = channel.tryLock();
                 if (lock == null) {
                     throw new IOException("Can not lock the registry cache file " + file.getAbsolutePath() + ", ignore and retry later, maybe multi java process use the file, please config: dubbo.registry.file=xxx.properties");
                 }
+
                 // Save
                 try {
                     if (!file.exists()) {
                         file.createNewFile();
                     }
+
+                    // 将配置的文件信息保存到文件中
                     try (FileOutputStream outputFile = new FileOutputStream(file)) {
                         properties.store(outputFile, "Dubbo Registry Cache");
                     }
                 } finally {
+                    // 解开文件锁
                     lock.release();
                 }
             }
         } catch (Throwable e) {
+            // 执行出现错误时，则交给专门的线程去进行重试
             savePropertiesRetryTimes.incrementAndGet();
             if (savePropertiesRetryTimes.get() >= MAX_RETRY_TIMES_SAVE_PROPERTIES) {
                 logger.warn("Failed to save registry cache file after retrying " + MAX_RETRY_TIMES_SAVE_PROPERTIES + " times, cause: " + e.getMessage(), e);
@@ -437,10 +453,13 @@ public abstract class AbstractRegistry implements Registry {
 
         try {
             StringBuilder buf = new StringBuilder();
+
+            // 获取所有通知到的地址
             Map<String, List<URL>> categoryNotified = notified.get(url);
             if (categoryNotified != null) {
                 for (List<URL> us : categoryNotified.values()) {
                     for (URL u : us) {
+                        // 多个地址进行拼接
                         if (buf.length() > 0) {
                             buf.append(URL_SEPARATOR);
                         }
@@ -448,11 +467,19 @@ public abstract class AbstractRegistry implements Registry {
                     }
                 }
             }
+
+            // 保存数据
             properties.setProperty(url.getServiceKey(), buf.toString());
+
+            // 保存为一个新的版本号
+            // 通过这种机制可以保证后面保存的记录，在重试的时候，不会重试之前的版本
             long version = lastCacheChanged.incrementAndGet();
+
+            // 需要同步保存则进行保存
             if (syncSaveFile) {
                 doSaveProperties(version);
             } else {
+                // 否则则异步去进行处理
                 registryCacheExecutor.execute(new SaveProperties(version));
             }
         } catch (Throwable t) {
