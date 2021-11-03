@@ -87,20 +87,24 @@ public class AdaptiveClassCodeGenerator {
      * generate and return class code
      */
     public String generate() {
-        // no need to generate adaptive class since there's no adaptive method found.
+        // 如果没有任何方法标记为Adaptive，则不做处理
         if (!hasAdaptiveMethod()) {
             throw new IllegalStateException("No adaptive method exist on extension " + type.getName() + ", refuse to create the adaptive class!");
         }
 
+        // 进行编写代码
         StringBuilder code = new StringBuilder();
-        code.append(generatePackageInfo());
-        code.append(generateImports());
-        code.append(generateClassDeclaration());
+        code.append(generatePackageInfo());       // 生成包信息
+        code.append(generateImports());           // 生成引用信息
+        code.append(generateClassDeclaration());  // 生成类声明
 
+        // 生成每一个方法
         Method[] methods = type.getMethods();
         for (Method method : methods) {
             code.append(generateMethod(method));
         }
+
+        // 输出最后的一个"}"来结束当前类
         code.append("}");
 
         if (logger.isDebugEnabled()) {
@@ -156,11 +160,16 @@ public class AdaptiveClassCodeGenerator {
      * generate method declaration
      */
     private String generateMethod(Method method) {
-        String methodReturnType = method.getReturnType().getCanonicalName();
-        String methodName = method.getName();
-        String methodContent = generateMethodContent(method);
-        String methodArgs = generateMethodArguments(method);
-        String methodThrows = generateMethodThrows(method);
+        String methodReturnType = method.getReturnType().getCanonicalName();  // 方法返回类型
+        String methodName = method.getName();                 // 方法名称
+        String methodContent = generateMethodContent(method); // 生成方法内容
+        String methodArgs = generateMethodArguments(method);  // 生成参数列表
+        String methodThrows = generateMethodThrows(method);   // 方法抛出的异常
+
+        // 格式化为一个字符串
+        // public %s %s(%s) %s {
+        // %s
+        // }
         return String.format(CODE_METHOD_DECLARATION, methodReturnType, methodName, methodArgs, methodThrows, methodContent);
     }
 
@@ -198,34 +207,52 @@ public class AdaptiveClassCodeGenerator {
      * generate method content
      */
     private String generateMethodContent(Method method) {
+        // 获取Adaptive注解，只支持含有Adaptive注解方法处理
         Adaptive adaptiveAnnotation = method.getAnnotation(Adaptive.class);
         StringBuilder code = new StringBuilder(512);
+
         if (adaptiveAnnotation == null) {
+            // 没有该注解，直接抛出异常 throw new UnsupportedOperationException
             return generateUnsupported(method);
         } else {
+            // 获取URL参数的所在位置
             int urlTypeIndex = getUrlTypeIndex(method);
 
             // found parameter in URL type
             if (urlTypeIndex != -1) {
-                // Null Point check
+                // 增加判断url不为空的代码
                 code.append(generateUrlNullCheck(urlTypeIndex));
             } else {
                 // did not find parameter in URL type
+                // 获取这个方法中的所有参数列表
+                // 寻找每个参数中是否有"get"开头的方法，并且返回值是URL的
+                // 如果有则同样认定为找到，否则抛出异常
                 code.append(generateUrlAssignmentIndirectly(method));
             }
 
+            // 获取扩展点的适配名称
             String[] value = getMethodAdaptiveValue(adaptiveAnnotation);
 
+            // 判断是否有参数是Invocation类
+            // 这里判断的主要目的在于，拥有Invocation时，则获取扩展名称的方式发生改变
+            // 存在Invocation时，通过getMethodParameter，否则通过getParameter来执行
+            // getMethodParameter是dubboURL中特有的，用于将"test.a"转换为"testA"的形式
             boolean hasInvocation = hasInvocationArgument(method);
 
+            // 增加有Invocation类时的不为空判断
             code.append(generateInvocationArgumentNullCheck(method));
 
+            // 生成获取扩展点名称的方法
             code.append(generateExtNameAssignment(value, hasInvocation));
+
+            // 检查扩展点不能为空
             // check extName == null?
             code.append(generateExtNameNullCheck(value));
 
+            // 获取扩展点实现
             code.append(generateExtensionAssignment());
 
+            // 返回扩展点中的真实调用
             // return statement
             code.append(generateReturnAndInvocation(method));
         }

@@ -576,18 +576,20 @@ public class ExtensionLoader<T> {
 
     @SuppressWarnings("unchecked")
     public T getAdaptiveExtension() {
+        // 与原先是用相同的方式，进行Holder和加锁的方式来保证只会被创建一次
         Object instance = cachedAdaptiveInstance.get();
+
         if (instance == null) {
+            // 如果已经有创建并且错误的情况，则直接返回错误信息，防止重复没必要的创建
             if (createAdaptiveInstanceError != null) {
-                throw new IllegalStateException("Failed to create adaptive instance: " +
-                        createAdaptiveInstanceError.toString(),
-                        createAdaptiveInstanceError);
+                throw new IllegalStateException("Failed to create adaptive instance: " + createAdaptiveInstanceError.toString(), createAdaptiveInstanceError);
             }
 
             synchronized (cachedAdaptiveInstance) {
                 instance = cachedAdaptiveInstance.get();
                 if (instance == null) {
                     try {
+                        // 真实的进行创建操作
                         instance = createAdaptiveExtension();
                         cachedAdaptiveInstance.set(instance);
                     } catch (Throwable t) {
@@ -1056,6 +1058,7 @@ public class ExtensionLoader<T> {
     @SuppressWarnings("unchecked")
     private T createAdaptiveExtension() {
         try {
+            // 使用 getAdaptiveExtensionClass 方法进行构建类并且执行实例化，然后和普通的其他class相同，依旧使用injectExtension进行扩展
             return injectExtension((T) getAdaptiveExtensionClass().newInstance());
         } catch (Exception e) {
             throw new IllegalStateException("Can't create adaptive extension " + type + ", cause: " + e.getMessage(), e);
@@ -1063,17 +1066,29 @@ public class ExtensionLoader<T> {
     }
 
     private Class<?> getAdaptiveExtensionClass() {
+        // 确保已经加载了所有的扩展类信息
         getExtensionClasses();
+
+        // 如果已经加载过了，则直接返回
         if (cachedAdaptiveClass != null) {
             return cachedAdaptiveClass;
         }
+
+        // 否则进行构建操作
         return cachedAdaptiveClass = createAdaptiveExtensionClass();
     }
 
     private Class<?> createAdaptiveExtensionClass() {
+        // 实例化一个新的 Adaptive 代码生成器，并且进行代码生成
         String code = new AdaptiveClassCodeGenerator(type, cachedDefaultName).generate();
+
+        // 获取类加载器
         ClassLoader classLoader = findClassLoader();
+
+        // 通过扩展点，寻找编译器, 目前有Java自带的编译器和Javassist的编译器
         org.apache.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
+
+        // 编译并且生成class
         return compiler.compile(code, classLoader);
     }
 
