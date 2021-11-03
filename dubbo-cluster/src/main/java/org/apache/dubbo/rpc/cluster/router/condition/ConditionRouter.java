@@ -57,7 +57,11 @@ public class ConditionRouter extends AbstractRouter {
 
     private static final Logger logger = LoggerFactory.getLogger(ConditionRouter.class);
     protected static final Pattern ROUTE_PATTERN = Pattern.compile("([&!=,]*)\\s*([^&!=,\\s]+)");
+
+    // 是否满足判断条件
     protected Map<String, MatchPair> whenCondition;
+
+    // 当满足判断条件时如何选择invokers
     protected Map<String, MatchPair> thenCondition;
 
     private boolean enabled;
@@ -78,13 +82,19 @@ public class ConditionRouter extends AbstractRouter {
 
     public void init(String rule) {
         try {
+            // 必须包含规则配置
             if (rule == null || rule.trim().length() == 0) {
                 throw new IllegalArgumentException("Illegal route rule!");
             }
+
             rule = rule.replace("consumer.", "").replace("provider.", "");
+
+            // 根据"=>"来判断when或者then条件
             int i = rule.indexOf("=>");
             String whenRule = i < 0 ? null : rule.substring(0, i).trim();
             String thenRule = i < 0 ? rule.trim() : rule.substring(i + 2).trim();
+
+            // 分别根据"=>"来生成前后的规则
             Map<String, MatchPair> when = StringUtils.isBlank(whenRule) || "true".equals(whenRule) ? new HashMap<String, MatchPair>() : parseRule(whenRule);
             Map<String, MatchPair> then = StringUtils.isBlank(thenRule) || "false".equals(thenRule) ? null : parseRule(thenRule);
             // NOTE: It should be determined on the business level whether the `When condition` can be empty or not.
@@ -95,31 +105,49 @@ public class ConditionRouter extends AbstractRouter {
         }
     }
 
-    private static Map<String, MatchPair> parseRule(String rule)
-            throws ParseException {
+    private static Map<String, MatchPair> parseRule(String rule) throws ParseException {
         Map<String, MatchPair> condition = new HashMap<String, MatchPair>();
         if (StringUtils.isBlank(rule)) {
             return condition;
         }
+
+        // 当前所操作的数据，用于后面循环中使用，标识上一次循环中所操作的信息
         // Key-Value pair, stores both match and mismatch conditions
         MatchPair pair = null;
+
         // Multiple values
         Set<String> values = null;
+
+        // 转化每一个条件
+        // 这里分别会对每一次的分割做匹配
+        // host = 1.1.1.* & host != 1.1.1.2 & method=sayHello
+        // "" host
+        // "=" 1.1.1.x
+        // "&" host
+        // "!=" 1.1.1.2
+        // ....
         final Matcher matcher = ROUTE_PATTERN.matcher(rule);
         while (matcher.find()) { // Try to match one by one
-            String separator = matcher.group(1);
-            String content = matcher.group(2);
+            String separator = matcher.group(1);  // 分隔符
+            String content = matcher.group(2);    // 内容
+
+            // 如果不存在分隔符，则认为是首个判断
             // Start part of the condition expression.
             if (StringUtils.isEmpty(separator)) {
                 pair = new MatchPair();
+                // 直接放入当前condition
                 condition.put(content, pair);
             }
+
+            // 如果是"&"则代表并且
             // The KV part of the condition expression
             else if ("&".equals(separator)) {
+                // 如果当前的when或者then中不包含该判定条件则添加则放入
                 if (condition.get(content) == null) {
                     pair = new MatchPair();
                     condition.put(content, pair);
                 } else {
+                    // 否则当前的condition就需要拿出来
                     pair = condition.get(content);
                 }
             }
@@ -132,9 +160,11 @@ public class ConditionRouter extends AbstractRouter {
                             + content + "\".", matcher.start());
                 }
 
+                // 如果是等于的比较，则需要将值放入matches中
                 values = pair.matches;
                 values.add(content);
             }
+
             // The Value in the KV part.
             else if ("!=".equals(separator)) {
                 if (pair == null) {
@@ -144,9 +174,12 @@ public class ConditionRouter extends AbstractRouter {
                             + content + "\".", matcher.start());
                 }
 
+                // 如果为不等于，则需要放入到不等于中
                 values = pair.mismatches;
                 values.add(content);
             }
+
+            // 如果values是多个的话
             // The Value in the KV part, if Value have more than one items.
             else if (",".equals(separator)) { // Should be separated by ','
                 if (values == null || values.isEmpty()) {
@@ -155,6 +188,8 @@ public class ConditionRouter extends AbstractRouter {
                             + "' at index " + matcher.start() + " before \""
                             + content + "\".", matcher.start());
                 }
+
+                // 则分别加入到values列表中
                 values.add(content);
             } else {
                 throw new ParseException("Illegal route rule \"" + rule
@@ -166,16 +201,19 @@ public class ConditionRouter extends AbstractRouter {
     }
 
     @Override
-    public <T> List<Invoker<T>> route(List<Invoker<T>> invokers, URL url, Invocation invocation)
-            throws RpcException {
+    public <T> List<Invoker<T>> route(List<Invoker<T>> invokers, URL url, Invocation invocation) throws RpcException {
+        // 不启用的时，则直接返回提供者的列表
         if (!enabled) {
             return invokers;
         }
 
+        // 如果不存在任何invoker则直接返回
         if (CollectionUtils.isEmpty(invokers)) {
             return invokers;
         }
+
         try {
+            // 判断是否满足判断条件，不满足直接返回列表
             if (!matchWhen(url, invocation)) {
                 return invokers;
             }
@@ -184,14 +222,19 @@ public class ConditionRouter extends AbstractRouter {
                 logger.warn("The current consumer in the service blacklist. consumer: " + NetUtils.getLocalHost() + ", service: " + url.getServiceKey());
                 return result;
             }
+
+            // 依次判断每一个 invoker 的 url 是否满足条件
             for (Invoker<T> invoker : invokers) {
                 if (matchThen(invoker.getUrl(), url)) {
                     result.add(invoker);
                 }
             }
+
+            // 如果不为空则直接返回
             if (!result.isEmpty()) {
                 return result;
             } else if (force) {
+                // 如果为空，并且必须要走这个条件时，则直接返回空
                 logger.warn("The route result is empty and force execute. consumer: " + NetUtils.getLocalHost() + ", service: " + url.getServiceKey() + ", router: " + url.getParameterAndDecoded(RULE_KEY));
                 return result;
             }
@@ -214,10 +257,13 @@ public class ConditionRouter extends AbstractRouter {
     }
 
     boolean matchWhen(URL url, Invocation invocation) {
+        // 如果判断条件为空则直接认定为匹配
+        // 如果条件匹配则认定为匹配
         return CollectionUtils.isEmptyMap(whenCondition) || matchCondition(whenCondition, url, null, invocation);
     }
 
     private boolean matchThen(URL url, URL param) {
+        // 判断条件不能为空并且匹配条件规则时才返回
         return CollectionUtils.isNotEmptyMap(thenCondition) && matchCondition(thenCondition, url, param, null);
     }
 
@@ -259,8 +305,8 @@ public class ConditionRouter extends AbstractRouter {
     }
 
     protected static final class MatchPair {
-        final Set<String> matches = new HashSet<String>();
-        final Set<String> mismatches = new HashSet<String>();
+        final Set<String> matches = new HashSet<String>();    // 满足/匹配 条件
+        final Set<String> mismatches = new HashSet<String>(); // 不满足/不匹配 条件
 
         private boolean isMatch(String value, URL param) {
             if (!matches.isEmpty() && mismatches.isEmpty()) {
