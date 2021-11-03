@@ -406,16 +406,26 @@ public class RegistryProtocol implements Protocol {
         return key;
     }
 
+    /**
+     * @param type Service class（比如 HelloService服务）
+     * @param url  注册中心地址信息
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        // 获取注册中心的地址URL(主要用于转换协议)，比如使用的zookeeper，那么就会转换 为zookeeper://
         url = getRegistryUrl(url);
 
+        // 获取注册中心配置信息
         Registry registry = registryFactory.getRegistry(url);
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
         }
 
+        // 适用于多个分组时使用
         // group="a,b" or group="*"
         Map<String, String> qs = StringUtils.parseQueryString(url.getParameterAndDecoded(REFER_KEY));
         String group = qs.get(GROUP_KEY);
@@ -424,6 +434,8 @@ public class RegistryProtocol implements Protocol {
                 return doRefer(getMergeableCluster(), registry, type, url);
             }
         }
+
+        // 真正进行构建invoker和上面的Directory
         return doRefer(cluster, registry, type, url);
     }
 
@@ -432,19 +444,33 @@ public class RegistryProtocol implements Protocol {
     }
 
     private <T> Invoker<T> doRefer(Cluster cluster, Registry registry, Class<T> type, URL url) {
+        // 实例化Directory
         RegistryDirectory<T> directory = new RegistryDirectory<T>(type, url);
+
+        // 设置注册中心和所使用的协议
         directory.setRegistry(registry);
         directory.setProtocol(protocol);
+
+        // 生成监听路径URL
         // all attributes of REFER_KEY
         Map<String, String> parameters = new HashMap<String, String>(directory.getConsumerUrl().getParameters());
         URL subscribeUrl = new URL(CONSUMER_PROTOCOL, parameters.remove(REGISTER_IP_KEY), 0, type.getName(), parameters);
         if (directory.isShouldRegister()) {
+            // 在Directory中设置监听的 consumerurl 地址
             directory.setRegisteredConsumerUrl(subscribeUrl);
+
+            // 在注册中心中注册消费者URL
+            // 也就是Zookeeper的node中看到的consumer://
             registry.register(directory.getRegisteredConsumerUrl());
         }
+
+        // 构建路由链
         directory.buildRouterChain(subscribeUrl);
+
+        // 进行监听所有的的provider
         directory.subscribe(toSubscribeUrl(subscribeUrl));
 
+        // 加入到集群中
         Invoker<T> invoker = cluster.join(directory);
         List<RegistryProtocolListener> listeners = findRegistryProtocolListeners(url);
         if (CollectionUtils.isEmpty(listeners)) {

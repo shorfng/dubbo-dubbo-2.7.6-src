@@ -94,7 +94,10 @@ public class RouterChain<T> {
      * @return
      */
     public List<Invoker<T>> route(URL url, Invocation invocation) {
+        // 所有的invoker列表
         List<Invoker<T>> finalInvokers = invokers;
+
+        // 依次交给所有的路由规则进行选取路由列表
         for (Router router : routers) {
             finalInvokers = router.route(finalInvokers, url, invocation);
         }
