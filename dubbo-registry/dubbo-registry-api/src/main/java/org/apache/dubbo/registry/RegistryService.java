@@ -40,6 +40,7 @@ public interface RegistryService {
      *
      * @param url  Registration information , is not allowed to be empty, e.g: dubbo://10.20.153.10/org.apache.dubbo.foo.BarService?version=1.0.0&application=kylin
      */
+    // 进行对URL的注册操作，比如provider，consumer，routers等
     void register(URL url);
 
     /**
@@ -51,6 +52,7 @@ public interface RegistryService {
      *
      * @param url Registration information , is not allowed to be empty, e.g: dubbo://10.20.153.10/org.apache.dubbo.foo.BarService?version=1.0.0&application=kylin
      */
+    // 解除对指定URL的注册，比如provider，consumer，routers等
     void unregister(URL url);
 
     /**
@@ -68,6 +70,7 @@ public interface RegistryService {
      * @param url      Subscription condition, not allowed to be empty, e.g. consumer://10.20.153.10/org.apache.dubbo.foo.BarService?version=1.0.0&application=kylin
      * @param listener A listener of the change event, not allowed to be empty
      */
+    // 增加对指定 URL 的路径监听，当有变化的时候进行通知操作
     void subscribe(URL url, NotifyListener listener);
 
     /**
@@ -80,6 +83,7 @@ public interface RegistryService {
      * @param url      Subscription condition, not allowed to be empty, e.g. consumer://10.20.153.10/org.apache.dubbo.foo.BarService?version=1.0.0&application=kylin
      * @param listener A listener of the change event, not allowed to be empty
      */
+    // 解除对指定URL的路径监听，取消指定的 listener
     void unsubscribe(URL url, NotifyListener listener);
 
     /**
@@ -89,6 +93,6 @@ public interface RegistryService {
      * @return The registered information list, which may be empty, the meaning is the same as the parameters of {@link org.apache.dubbo.registry.NotifyListener#notify(List<URL>)}.
      * @see org.apache.dubbo.registry.NotifyListener#notify(List)
      */
+    // 查询指定URL下面的URL列表，比如查询指定服务下面的consumer列表
     List<URL> lookup(URL url);
-
 }

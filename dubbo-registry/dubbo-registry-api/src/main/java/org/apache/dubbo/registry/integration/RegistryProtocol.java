@@ -168,10 +168,17 @@ public class RegistryProtocol implements Protocol {
         return overrideListeners;
     }
 
+    /**
+     * 从 RegistryFactory 中获取注册中心，并且进行地址注册
+     */
     public void register(URL registryUrl, URL registeredProviderUrl) {
+        // 获取注册中心
         Registry registry = registryFactory.getRegistry(registryUrl);
+
+        // 对当前的服务进行注册
         registry.register(registeredProviderUrl);
 
+        // ProviderModel 表示服务提供者模型，此对象中存储了与服务提供者相关的信息，比如服务的配置信息，服务实例等，每个被导出的服务对应一个 ProviderModel
         ProviderModel model = ApplicationModel.getProviderModel(registeredProviderUrl.getServiceKey());
         model.addStatedUrl(new ProviderModel.RegisterStatedURL(
                 registeredProviderUrl,
@@ -182,39 +189,48 @@ public class RegistryProtocol implements Protocol {
 
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
+        // 获取注册中心的地址
         URL registryUrl = getRegistryUrl(originInvoker);
-        // url to export locally
+
+        // 获取当前提供者需要注册的地址
         URL providerUrl = getProviderUrl(originInvoker);
 
-        // Subscribe the override data
-        // FIXME When the provider subscribes, it will affect the scene : a certain JVM exposes the service and call
-        //  the same service. Because the subscribed is cached key with the name of the service, it causes the
-        //  subscription information to cover.
+        // 获取进行注册override协议的访问地址
         final URL overrideSubscribeUrl = getSubscribedOverrideUrl(providerUrl);
+
+        // 增加 override 的监听器
         final OverrideListener overrideSubscribeListener = new OverrideListener(overrideSubscribeUrl, originInvoker);
         overrideListeners.put(overrideSubscribeUrl, overrideSubscribeListener);
 
+        // 根据现有的override协议，对注册地址进行改写操作
         providerUrl = overrideUrlWithConfig(providerUrl, overrideSubscribeListener);
-        //export invoker
+
+        // 对当前的服务进行本地导出
+        // 完成后即可在看到本地的 20880 端口号已经启动，并且暴露服务
         final ExporterChangeableWrapper<T> exporter = doLocalExport(originInvoker, providerUrl);
 
-        // url to registry
+        // 获取真实的注册中心, 比如常用的 ZookeeperRegistry
         final Registry registry = getRegistry(originInvoker);
+
+        // 获取当前服务需要注册到注册中心的providerURL，主要用于去除一些没有必要的参数(比如在本地导出时所使用的 qos 参数等值)
         final URL registeredProviderUrl = getUrlToRegistry(providerUrl, registryUrl);
-        // decide if we need to delay publish
+
+        // 获取当前url是否需要进行注册参数
         boolean register = providerUrl.getParameter(REGISTER_KEY, true);
         if (register) {
+            // 将当前的提供者注册到注册中心上去
             register(registryUrl, registeredProviderUrl);
         }
 
-        // Deprecated! Subscribe to override rules in 2.6.x or before.
+        // 对override协议进行注册，用于在接收到override请求时做适配，这种方式用于适配2.6.x及之前的版本(混用)
         registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
 
+        // 设置当前导出中的相关信息
         exporter.setRegisterUrl(registeredProviderUrl);
         exporter.setSubscribeUrl(overrideSubscribeUrl);
-
         notifyExport(exporter);
-        //Ensure that a new exporter instance is returned every time export
+
+        // 返回导出对象(对数据进行封装)
         return new DestroyableExporter<>(exporter);
     }
 

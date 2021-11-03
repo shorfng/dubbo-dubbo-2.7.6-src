@@ -226,25 +226,31 @@ public abstract class FailbackRegistry extends AbstractRegistry {
         return failedNotified;
     }
 
+    /**
+     * 调用第三方的实现方式，并且在出现错误时增加重试机制
+     */
     @Override
     public void register(URL url) {
         if (!acceptable(url)) {
             logger.info("URL " + url + " will not be registered to Registry. Registry " + url + " does not accept service of this protocol type.");
             return;
         }
+
+        // 上层调用，主要用于保存已经注册的地址列表
         super.register(url);
+
+        // 将一些错误的信息移除（确保当前地址可以在出现一些错误的地址时可以被删除）
         removeFailedRegistered(url);
         removeFailedUnregistered(url);
+
         try {
-            // Sending a registration request to the server side
+            // 发送给第三方渠道进行注册操作
             doRegister(url);
         } catch (Exception e) {
             Throwable t = e;
 
-            // If the startup detection is opened, the Exception is thrown directly.
-            boolean check = getUrl().getParameter(Constants.CHECK_KEY, true)
-                    && url.getParameter(Constants.CHECK_KEY, true)
-                    && !CONSUMER_PROTOCOL.equals(url.getProtocol());
+            // 记录日志
+            boolean check = getUrl().getParameter(Constants.CHECK_KEY, true) && url.getParameter(Constants.CHECK_KEY, true) && !CONSUMER_PROTOCOL.equals(url.getProtocol());
             boolean skipFailback = t instanceof SkipFailbackWrapperException;
             if (check || skipFailback) {
                 if (skipFailback) {
@@ -255,7 +261,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 logger.error("Failed to register " + url + ", waiting for retry, cause: " + t.getMessage(), t);
             }
 
-            // Record a failed registration request to a failed list, retry regularly
+            // 后台异步进行重试，也是 Failback 比较关键的代码
             addFailedRegistered(url);
         }
     }
