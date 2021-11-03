@@ -29,20 +29,25 @@ import java.util.List;
  */
 @Adaptive
 public class AdaptiveExtensionFactory implements ExtensionFactory {
-
     private final List<ExtensionFactory> factories;
 
     public AdaptiveExtensionFactory() {
+        // 获取针对 ExtensionFactory 扩展加载器
         ExtensionLoader<ExtensionFactory> loader = ExtensionLoader.getExtensionLoader(ExtensionFactory.class);
         List<ExtensionFactory> list = new ArrayList<ExtensionFactory>();
+
+        // 获取支持的扩展
         for (String name : loader.getSupportedExtensions()) {
+            // 将所有的 ExtensionFactory 进行缓存
             list.add(loader.getExtension(name));
         }
+
         factories = Collections.unmodifiableList(list);
     }
 
     @Override
     public <T> T getExtension(Class<T> type, String name) {
+        // 交给每个真实的 ExtensionFactory 来处理
         for (ExtensionFactory factory : factories) {
             T extension = factory.getExtension(type, name);
             if (extension != null) {
@@ -51,5 +56,4 @@ public class AdaptiveExtensionFactory implements ExtensionFactory {
         }
         return null;
     }
-
 }

@@ -19,9 +19,9 @@ package org.apache.dubbo.common.extension;
 /**
  * ExtensionFactory
  */
+// 通过传入扩展点类型和真正的名称来获取扩展的（和 SPI 中的具体名称实现挂钩）
 @SPI
 public interface ExtensionFactory {
-
     /**
      * Get extension.
      *
@@ -30,5 +30,4 @@ public interface ExtensionFactory {
      * @return object instance.
      */
     <T> T getExtension(Class<T> type, String name);
-
 }
