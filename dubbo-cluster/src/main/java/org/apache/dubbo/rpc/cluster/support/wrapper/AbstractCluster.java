@@ -34,12 +34,16 @@ import static org.apache.dubbo.common.constants.CommonConstants.REFERENCE_INTERC
 
 public abstract class AbstractCluster implements Cluster {
 
+    // 对invoker进行封装
     private <T> Invoker<T> buildClusterInterceptors(AbstractClusterInvoker<T> clusterInvoker, String key) {
         AbstractClusterInvoker<T> last = clusterInvoker;
+
+        // 获取所有的拦截器
         List<ClusterInterceptor> interceptors = ExtensionLoader.getExtensionLoader(ClusterInterceptor.class).getActivateExtension(clusterInvoker.getUrl(), key);
 
         if (!interceptors.isEmpty()) {
             for (int i = interceptors.size() - 1; i >= 0; i--) {
+                // 对拦截器进行一层封装
                 final ClusterInterceptor interceptor = interceptors.get(i);
                 final AbstractClusterInvoker<T> next = last;
                 last = new InterceptorInvokerNode<>(clusterInvoker, interceptor, next);
@@ -50,6 +54,7 @@ public abstract class AbstractCluster implements Cluster {
 
     @Override
     public <T> Invoker<T> join(Directory<T> directory) throws RpcException {
+        // 使用子类 FailoverCluster 的 doJoin 来真正生成Invoker，并且使用拦截器的方式进行一层封装
         return buildClusterInterceptors(doJoin(directory), directory.getUrl().getParameter(REFERENCE_INTERCEPTOR_KEY));
     }
 

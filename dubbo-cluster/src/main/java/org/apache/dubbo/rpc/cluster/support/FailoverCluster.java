@@ -25,12 +25,11 @@ import org.apache.dubbo.rpc.cluster.support.wrapper.AbstractCluster;
  *
  */
 public class FailoverCluster extends AbstractCluster {
-
     public final static String NAME = "failover";
 
     @Override
     public <T> AbstractClusterInvoker<T> doJoin(Directory<T> directory) throws RpcException {
+        // 构建 FailoverClusterInvoker 对象
         return new FailoverClusterInvoker<>(directory);
     }
-
 }

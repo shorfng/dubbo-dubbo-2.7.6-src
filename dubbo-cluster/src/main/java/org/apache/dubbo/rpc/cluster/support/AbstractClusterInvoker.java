@@ -245,17 +245,26 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
 
     @Override
     public Result invoke(final Invocation invocation) throws RpcException {
+        // 检查是否已经关闭
         checkWhetherDestroyed();
 
+        // 拷贝当前RPCContext中的附加信息到当前的invocation中
         // binding attachments into invocation.
         Map<String, Object> contextAttachments = RpcContext.getContext().getObjectAttachments();
         if (contextAttachments != null && contextAttachments.size() != 0) {
             ((RpcInvocation) invocation).addObjectAttachments(contextAttachments);
         }
 
+        // 找寻出所有支持的invoker，已经路由过的
         List<Invoker<T>> invokers = list(invocation);
+
+        // 初始化负载均衡器
         LoadBalance loadbalance = initLoadBalance(invokers, invocation);
+
+        // 用于适配异步请求使用
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
+
+        // 交给子类 FailoverClusterInvoker 的 doInvoke 进行真正处理请求
         return doInvoke(invocation, invokers, loadbalance);
     }
 
@@ -284,8 +293,7 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         }
     }
 
-    protected abstract Result doInvoke(Invocation invocation, List<Invoker<T>> invokers,
-                                       LoadBalance loadbalance) throws RpcException;
+    protected abstract Result doInvoke(Invocation invocation, List<Invoker<T>> invokers, LoadBalance loadbalance) throws RpcException;
 
     protected List<Invoker<T>> list(Invocation invocation) throws RpcException {
         return directory.list(invocation);
