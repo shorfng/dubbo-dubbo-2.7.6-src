@@ -81,25 +81,41 @@ public class DubboInvoker<T> extends AbstractInvoker<T> {
         inv.setAttachment(PATH_KEY, getUrl().getPath());
         inv.setAttachment(VERSION_KEY, version);
 
+        // 传输的客户端
         ExchangeClient currentClient;
         if (clients.length == 1) {
             currentClient = clients[0];
         } else {
             currentClient = clients[index.getAndIncrement() % clients.length];
         }
+
         try {
+            // 是否返回值，也就是相当于发送了一个指令，不在乎服务端的返回
+            // 通常适用于异步请求
             boolean isOneway = RpcUtils.isOneway(getUrl(), invocation);
+
+            // 获取超时的配置
             int timeout = getUrl().getMethodPositiveParameter(methodName, TIMEOUT_KEY, DEFAULT_TIMEOUT);
             if (isOneway) {
+                // 如果不需要返回值信息(异步)
                 boolean isSent = getUrl().getMethodParameter(methodName, Constants.SENT_KEY, false);
+
+                // 发送命令
                 currentClient.send(inv, isSent);
+
+                // 告知为异步的结果
                 return AsyncRpcResult.newDefaultAsyncResult(invocation);
             } else {
+                // 获取真正执行的线程池(ThreadPool中的SPI)
                 ExecutorService executor = getCallbackExecutor(getUrl(), inv);
-                CompletableFuture<AppResponse> appResponseFuture =
-                        currentClient.request(inv, timeout, executor).thenApply(obj -> (AppResponse) obj);
-                // save for 2.6.x compatibility, for example, TraceFilter in Zipkin uses com.alibaba.xxx.FutureAdapter
+
+                // 发送请求并且等待结果
+                CompletableFuture<AppResponse> appResponseFuture = currentClient.request(inv, timeout, executor).thenApply(obj -> (AppResponse) obj);
+
+                // 在2.6.x中使用，设置完成的结果信息
                 FutureContext.getContext().setCompatibleFuture(appResponseFuture);
+
+                // 创建新的结果信息并且返回
                 AsyncRpcResult result = new AsyncRpcResult(appResponseFuture, inv);
                 result.setExecutor(executor);
                 return result;

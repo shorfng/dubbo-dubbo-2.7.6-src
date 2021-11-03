@@ -65,6 +65,10 @@ public interface ExchangeChannel extends Channel {
      * @return response future
      * @throws RemotingException
      */
+    // 真实的发送请求信息
+    // request: 请求对象  RPCInvocation
+    // timeout: 超时
+    // executor: 业务线程池
     CompletableFuture<Object> request(Object request, int timeout, ExecutorService executor) throws RemotingException;
 
     /**

@@ -125,15 +125,21 @@ final class HeaderExchangeChannel implements ExchangeChannel {
         if (closed) {
             throw new RemotingException(this.getLocalAddress(), null, "Failed to send request " + request + ", cause: The channel " + this + " is closed!");
         }
-        // create request.
+
+        // 创建一个新的request对象
         Request req = new Request();
         req.setVersion(Version.getProtocolVersion());
         req.setTwoWay(true);
         req.setData(request);
+
+        // 创建一个执行结果的回调信息处理
         DefaultFuture future = DefaultFuture.newFuture(channel, req, timeout, executor);
         try {
+            // 交给真正的业务渠道进行处理
+            // 这里的渠道是交给Transporter这个SPI进行创建的，其中NettyChannel就是在这里产生的
             channel.send(req);
         } catch (RemotingException e) {
+            // 请求出现异常则取消当前的请求封装
             future.cancel();
             throw e;
         }

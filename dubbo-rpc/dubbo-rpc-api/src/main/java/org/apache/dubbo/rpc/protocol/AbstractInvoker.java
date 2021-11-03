@@ -133,16 +133,20 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
 
     @Override
     public Result invoke(Invocation inv) throws RpcException {
-        // if invoker is destroyed due to address refresh from registry, let's allow the current invoke to proceed
+        // 判断系统是否已经关闭
         if (destroyed.get()) {
             logger.warn("Invoker for service " + this + " on consumer " + NetUtils.getLocalHost() + " is destroyed, "
                     + ", dubbo version is " + Version.getVersion() + ", this invoker should not be used any longer");
         }
+
         RpcInvocation invocation = (RpcInvocation) inv;
         invocation.setInvoker(this);
+
+        // 设置所有的RPCContext中的附加信息
         if (CollectionUtils.isNotEmptyMap(attachment)) {
             invocation.addObjectAttachmentsIfAbsent(attachment);
         }
+
         Map<String, Object> contextAttachments = RpcContext.getContext().getObjectAttachments();
         if (CollectionUtils.isNotEmptyMap(contextAttachments)) {
             /**
@@ -154,13 +158,18 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
             invocation.addObjectAttachments(contextAttachments);
         }
 
+        // 获取执行的模式
         invocation.setInvokeMode(RpcUtils.getInvokeMode(url, invocation));
+
+        // 设置执行id，主要用于适配异步模式使用
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
 
         AsyncRpcResult asyncResult;
         try {
+            // 交给子类 DubboInvoker 的 doInvoke 方法进行真正的执行
             asyncResult = (AsyncRpcResult) doInvoke(invocation);
         } catch (InvocationTargetException e) { // biz exception
+            // 业务异常
             Throwable te = e.getTargetException();
             if (te == null) {
                 asyncResult = AsyncRpcResult.newDefaultAsyncResult(null, e, invocation);
@@ -171,6 +180,7 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
                 asyncResult = AsyncRpcResult.newDefaultAsyncResult(null, te, invocation);
             }
         } catch (RpcException e) {
+            // RPC阶段出现了异常
             if (e.isBiz()) {
                 asyncResult = AsyncRpcResult.newDefaultAsyncResult(null, e, invocation);
             } else {
@@ -179,7 +189,11 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
         } catch (Throwable e) {
             asyncResult = AsyncRpcResult.newDefaultAsyncResult(null, e, invocation);
         }
+
+        // 设置执行的结果信息
         RpcContext.getContext().setFuture(new FutureAdapter(asyncResult.getResponseFuture()));
+
+        // 返回结果
         return asyncResult;
     }
 
