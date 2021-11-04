@@ -140,6 +140,7 @@ final class NettyCodecAdapter {
                         throw e;
                     }
                     if (msg == Codec2.DecodeResult.NEED_MORE_INPUT) {
+                        // 读索引
                         message.readerIndex(saveReaderIndex);
                         break;
                     } else {
@@ -153,6 +154,7 @@ final class NettyCodecAdapter {
                     }
                 } while (message.readable());
             } finally {
+                // 判断消息是否可读
                 if (message.readable()) {
                     message.discardReadBytes();
                     buffer = message;
