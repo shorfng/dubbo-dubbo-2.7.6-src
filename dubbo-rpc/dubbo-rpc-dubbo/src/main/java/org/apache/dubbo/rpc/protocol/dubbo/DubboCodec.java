@@ -167,28 +167,34 @@ public class DubboCodec extends ExchangeCodec {
     protected void encodeRequestData(Channel channel, ObjectOutput out, Object data, String version) throws IOException {
         RpcInvocation inv = (RpcInvocation) data;
 
-        out.writeUTF(version);
-        out.writeUTF(inv.getAttachment(PATH_KEY));
-        out.writeUTF(inv.getAttachment(VERSION_KEY));
+        out.writeUTF(version);                         // 写入版本
+        out.writeUTF(inv.getAttachment(PATH_KEY));     // 接口全名称
+        out.writeUTF(inv.getAttachment(VERSION_KEY));  // 接口版本号
+        out.writeUTF(inv.getMethodName());             // 写入方法名称
+        out.writeUTF(inv.getParameterTypesDesc());     // 调用参数描述信息
+        Object[] args = inv.getArguments();            // 所有的请求参数写入
 
-        out.writeUTF(inv.getMethodName());
-        out.writeUTF(inv.getParameterTypesDesc());
-        Object[] args = inv.getArguments();
         if (args != null) {
             for (int i = 0; i < args.length; i++) {
                 out.writeObject(encodeInvocationArgument(channel, inv, i));
             }
         }
+
+        // 写入所有的附加信息
         out.writeAttachments(inv.getObjectAttachments());
     }
 
     @Override
     protected void encodeResponseData(Channel channel, ObjectOutput out, Object data, String version) throws IOException {
         Result result = (Result) data;
+
+        // 是否支持返回attachment参数
         // currently, the version value in Response records the version of Request
         boolean attach = Version.isSupportResponseAttachment(version);
+
         Throwable th = result.getException();
         if (th == null) {
+            // 如果没有异常信息，则直接写入内容
             Object ret = result.getValue();
             if (ret == null) {
                 out.writeByte(attach ? RESPONSE_NULL_VALUE_WITH_ATTACHMENTS : RESPONSE_NULL_VALUE);
@@ -197,10 +203,12 @@ public class DubboCodec extends ExchangeCodec {
                 out.writeObject(ret);
             }
         } else {
+            // 否则的话则将异常信息序列化
             out.writeByte(attach ? RESPONSE_WITH_EXCEPTION_WITH_ATTACHMENTS : RESPONSE_WITH_EXCEPTION);
             out.writeThrowable(th);
         }
 
+        // 支持写入attachment，则写入
         if (attach) {
             // returns current version of Response to consumer side.
             result.getObjectAttachments().put(DUBBO_VERSION_KEY, Version.getProtocolVersion());
